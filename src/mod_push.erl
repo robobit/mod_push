@@ -151,6 +151,7 @@
          pubsub_host :: binary(),
          type :: backend_type(),
          app_name :: binary(),
+         sandbox :: boolean(),
          cluster_nodes = [] :: [atom()],
          worker :: binary()}).
 
@@ -1245,7 +1246,7 @@ add_disco_hooks(ServerHost) ->
     -> ok
 ).
 
-start_worker(#push_backend{worker = Worker, type = Type},
+start_worker(#push_backend{worker = Worker, type = Type, sandbox = Sandbox},
              #auth_data{auth_key = AuthKey,
                         package_sid = PackageSid,
                         certfile = CertFile}) ->
@@ -1256,11 +1257,12 @@ start_worker(#push_backend{worker = Worker, type = Type},
                          {mozilla, ?MODULE_MOZILLA},
                          {ubuntu, ?MODULE_UBUNTU},
                          {wns, ?MODULE_WNS}]),
+    PlatformOptions = [{sandbox, Sandbox}],
     BackendSpec =
     {Worker,
      {gen_server, start_link,
       [{local, Worker}, Module,
-       [AuthKey, PackageSid, CertFile], []]},
+       [AuthKey, PackageSid, CertFile, PlatformOptions], []]},
      permanent, 1000, worker, [?MODULE]},
     supervisor:start_child(ejabberd_sup, BackendSpec).
 
@@ -1974,7 +1976,7 @@ parse_backends(RawBackendOptsList, DefaultCertFile) ->
     BackendOptsList = get_backend_opts(RawBackendOptsList),
     MakeBackend =
     fun({RegHostJid, PubsubHostJid, Type, AppName, CertFile, AuthKey,
-         PackageSid}, Acc) ->
+         PackageSid, Sandbox}, Acc) ->
         ChosenCertFile = case is_binary(CertFile) of
             true -> CertFile;
             false -> DefaultCertFile
@@ -1995,6 +1997,7 @@ parse_backends(RawBackendOptsList, DefaultCertFile) ->
                    pubsub_host = PubsubHostJid#jid.lserver,
                    type = Type,
                    app_name = AppName,
+                   sandbox = Sandbox,
                    cluster_nodes = [node()],
                    worker = Worker},
                 [{Backend, AuthData}|Acc];
@@ -2025,8 +2028,9 @@ get_backend_opts(RawOptsList) ->
             CertFile = proplists:get_value(certfile, Opts),
             AuthKey = proplists:get_value(auth_key, Opts),
             PackageSid = proplists:get_value(package_sid, Opts),
+            Sandbox = proplists:get_value(sandbox, Opts, true),
             {RegHostJid, PubsubHostJid, Type, AppName, CertFile, AuthKey,
-             PackageSid}
+             PackageSid, Sandbox}
         end,
         RawOptsList).
 

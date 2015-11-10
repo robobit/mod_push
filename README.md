@@ -148,6 +148,7 @@ servers too.
 
 ####APNS-specific options
 * `certfile`: path to a pem file containing the developer's private key and the certificate obtained from Apple during the provisioning procedure
+* `sandbox`: use Apple sandbox servers (default: true)
 
 ####GCM-specific options
 * `auth_key`: the API key obtained from Google's api console

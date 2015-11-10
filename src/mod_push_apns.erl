@@ -38,8 +38,8 @@
 
 -include("logger.hrl").
 
-%-define(PUSH_URL, "gateway.push.apple.com").
--define(PUSH_URL, "gateway.sandbox.push.apple.com").
+-define(PUSH_URL_PRODUCTION, "gateway.push.apple.com").
+-define(PUSH_URL_SANDBOX, "gateway.sandbox.push.apple.com").
 -define(APNS_PORT, 2195).
 -define(SSL_TIMEOUT, 3000).
 -define(MAX_PAYLOAD_SIZE, 2048).
@@ -58,6 +58,7 @@
 
 -record(state,
         {certfile :: binary(),
+         sandbox :: boolean(),
          out_socket :: ssl:socket(),
          pending_list :: [{pos_integer(), any()}],
          send_list :: [any()],
@@ -70,12 +71,13 @@
 
 %-------------------------------------------------------------------------
 
-init([_AuthKey, _PackageSid, CertFile]) ->
-    ?DEBUG("+++++++++ mod_push_apns:init, certfile = ~p", [CertFile]),
+init([_AuthKey, _PackageSid, CertFile, PlatformOptions]) ->
+    ?DEBUG("+++++++++ mod_push_apns:init, certfile = ~p platformoptions = ~p", [CertFile, PlatformOptions]),
     inets:start(),
     crypto:start(),
     ssl:start(),
     {ok, #state{certfile = CertFile,
+                sandbox = proplists:get_bool(sandbox, PlatformOptions),
                 pending_list = [],
                 send_list = [],
                 retry_list = [],
@@ -181,6 +183,7 @@ handle_info({pending_timeout, Timestamp},
     {noreply, NewState};
 
 handle_info(send, #state{certfile = CertFile,
+                         sandbox = Sandbox,
                          out_socket = OldSocket,
                          pending_list = PendingList,
                          send_list = SendList,
@@ -188,7 +191,7 @@ handle_info(send, #state{certfile = CertFile,
                          retry_timer = RetryTimer,
                          message_id = MessageId} = State) ->
     NewState =
-    case get_socket(OldSocket, CertFile) of
+    case get_socket(OldSocket, CertFile, Sandbox) of
         {error, Reason} ->
             ?ERROR_MSG("connection to APNS failed: ~p", [Reason]),
             NewRetryList =        
@@ -269,6 +272,14 @@ handle_info(Info, State) ->
 
 %-------------------------------------------------------------------------
 
+apns_url(Sandbox) ->
+    case Sandbox of
+        true -> ?PUSH_URL_SANDBOX;
+        false -> ?PUSH_URL_PRODUCTION
+    end.
+
+%-------------------------------------------------------------------------
+
 handle_call(_Req, _From, State) -> {reply, {error, badarg}, State}.
 
 %-------------------------------------------------------------------------
@@ -278,7 +289,7 @@ handle_cast({dispatch, UserBare, Payload, Token, _AppId, DisableArgs},
             #state{send_list = SendList,
                    pending_timer = PendingTimer,
                    retry_timer = RetryTimer} = State) ->
-    ?DEBUG("+++++ Sending push notification to ~p", [?PUSH_URL]),
+    ?DEBUG("+++++ Sending push notification to ~p", [apns_url(State#state.sandbox)]),
     NewSendList =
     lists:keystore(UserBare, 1, SendList,
                    {UserBare, Payload, Token, DisableArgs}),
@@ -332,19 +343,23 @@ make_notifications(PendingList) ->
 
 %-------------------------------------------------------------------------
 
-get_socket(OldSocket, CertFile) ->
+get_socket(OldSocket, CertFile, Sandbox) ->
     case OldSocket of
         _Invalid when OldSocket =:= undefined;
                      OldSocket =:= error ->
             SslOpts =
             [{certfile, CertFile},
-             {versions, ['tlsv1.2']},
              {ciphers, ?CIPHERSUITES},
              {reuse_sessions, true},
              {secure_renegotiate, true}],
              %{verify, verify_peer},
              %{cacertfile, CACertFile}],
-            case ssl:connect(?PUSH_URL, ?APNS_PORT, SslOpts, ?SSL_TIMEOUT) of
+            SslExtraOpts =
+                case Sandbox of
+                    true -> [{versions, ['tlsv1.2']}];
+                    false -> []
+                end,
+            case ssl:connect(apns_url(Sandbox), ?APNS_PORT, SslOpts ++ SslExtraOpts, ?SSL_TIMEOUT) of
                 {ok, S} -> S;
                 {error, E} -> {error, E}
             end;
