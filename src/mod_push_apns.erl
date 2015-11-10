@@ -59,6 +59,9 @@
 -record(state,
         {certfile :: binary(),
          sandbox :: boolean(),
+         aps_alert :: boolean(),
+         aps_badge :: boolean(),
+         aps_sound :: boolean(),
          out_socket :: ssl:socket(),
          pending_list :: [{pos_integer(), any()}],
          send_list :: [any()],
@@ -78,6 +81,9 @@ init([_AuthKey, _PackageSid, CertFile, PlatformOptions]) ->
     ssl:start(),
     {ok, #state{certfile = CertFile,
                 sandbox = proplists:get_bool(sandbox, PlatformOptions),
+                aps_alert = true,
+                aps_badge = true,
+                aps_sound = true,
                 pending_list = [],
                 send_list = [],
                 retry_list = [],
@@ -232,7 +238,7 @@ handle_info(send, #state{certfile = CertFile,
 
                 _ ->
                     Notifications =
-                    make_notifications(NewPendingList),
+                    make_notifications(NewPendingList, State),
                     case ssl:send(Socket, Notifications) of
                         {error, Reason} ->
                             ?ERROR_MSG("sending to APNS failed: ~p",
@@ -317,12 +323,17 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 %-------------------------------------------------------------------------
 
-make_notifications(PendingList) ->
+make_notifications(PendingList, State) ->
     lists:foldl(
         fun({MessageId, {_, Payload, Token, _}}, Acc) ->
+            APSPayload =
+                [{'content-available', 1}] ++
+                if State#state.aps_alert -> [{'alert', 'Secure message'}]; true -> [] end ++
+                if State#state.aps_badge -> [{'badge', 1}]; true -> [] end ++
+                if State#state.aps_sound -> [{'sound', 'default'}]; true -> [] end,
             PushMessage =
             {struct,
-             [{aps, {struct, [{'content-available', 1}]}}|Payload]},
+             [{aps, {struct, APSPayload}}|Payload]},
             EncodedMessage =
             iolist_to_binary(mochijson2:encode(PushMessage)),
             ?DEBUG("++++++ Encoded message: ~p", [EncodedMessage]),
