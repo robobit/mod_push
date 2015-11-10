@@ -326,10 +326,11 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 make_notifications(PendingList, State) ->
     lists:foldl(
         fun({MessageId, {_, Payload, Token, _}}, Acc) ->
+            BadgeCount = proplists:get_value('message-count', Payload),
             APSPayload =
                 [{'content-available', 1}] ++
                 if State#state.aps_alert -> [{'alert', 'Secure message'}]; true -> [] end ++
-                if State#state.aps_badge -> [{'badge', 1}]; true -> [] end ++
+                if State#state.aps_badge -> [{'badge', BadgeCount}]; true -> [] end ++
                 if State#state.aps_sound -> [{'sound', 'default'}]; true -> [] end,
             PushMessage =
             {struct,
