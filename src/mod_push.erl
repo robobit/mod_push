@@ -1761,8 +1761,15 @@ start(Host, _Opts) ->
                                   process_iq, one_queue),
     ejabberd_hooks:add(mgmt_queue_add_hook, Host, ?MODULE, on_store_stanza,
                        50),
-    ejabberd_hooks:add(unset_presence_hook, Host, ?MODULE, on_unset_presence,
-                       70),
+%% When connecting without resuming the unset_presence_hook is triggered causing
+%% messages in push_stored_packet to be deleted. The messages will be lost and no
+%% notifications are triggered. Skipping this hook will keep the messages and only
+%% delete them when they are delivered to the client on an user_available_hook.
+%% This does make the logic somewhat odd and complex, it might be better to switch
+%% to a model where notifications are triggered when messages are queued for later
+%% delivery because the user is offline/unavailable.
+%    ejabberd_hooks:add(unset_presence_hook, Host, ?MODULE, on_unset_presence,
+%                       70),
     ejabberd_hooks:add(mgmt_resume_session_hook, Host, ?MODULE,
                        on_resume_session, 50),
     ejabberd_hooks:add(mgmt_wait_for_resume_hook, Host, ?MODULE,
