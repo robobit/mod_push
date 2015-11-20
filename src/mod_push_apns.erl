@@ -331,7 +331,7 @@ make_notifications(PendingList, State) ->
                 [{'content-available', 1}] ++
                 if State#state.aps_alert -> [{'alert', 'Secure message'}]; true -> [] end ++
                 if State#state.aps_badge -> [{'badge', BadgeCount}]; true -> [] end ++
-                if State#state.aps_sound -> [{'sound', 'default'}]; true -> [] end,
+                if State#state.aps_sound -> [{'sound', 'message.wav'}]; true -> [] end,
             PushMessage =
             {struct,
              [{aps, {struct, APSPayload}}|Payload]},
