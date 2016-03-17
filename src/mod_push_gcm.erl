@@ -150,7 +150,7 @@ send_request(Payload, Token, CertFile, ApiKey) ->
     [{to, Token}, {time_to_live, ?EXPIRY_TIME},
         {notification, {struct, [
             {title, 'Secure message'},
-            {soundname, 'message'},
+            {sound, 'message'},
             {body, list_to_binary(io_lib:format("~B new message(s)", [MessageCount]))},
             {notId, '1'}]}}]},
     ?DEBUG("+++++++ PushMessage (before encoding): ~p", [PushMessage]),
