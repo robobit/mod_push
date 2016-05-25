@@ -710,7 +710,7 @@ dispatch(Stanzas, UserJid, SetPending) ->
                     case make_payload(Stanzas, OldPayload, Config) of
                         none -> WriteUser(OldPayload);
 
-                        {Payload, StanzasToStore} ->
+                        {Payload, StanzasToStore, ShouldPush} ->
                             Receiver = jlib:jid_tolower(UserJid),
                             lists:foreach(
                                 fun({Timestamp, Stanza}) ->
@@ -722,7 +722,10 @@ dispatch(Stanzas, UserJid, SetPending) ->
                                 end,
                                 StanzasToStore),
                             WriteUser(Payload),
-                            do_dispatch(RegType, {LUser, LServer}, NodeId, Payload)
+                            case ShouldPush of
+                                true -> do_dispatch(RegType, {LUser, LServer}, NodeId, Payload);
+                                _ -> ok
+                            end
                     end
             end
     end.
@@ -2077,15 +2080,29 @@ make_payload(UnackedStanzas, StoredPayload, Config) ->
                     [] -> undefined;
                     [#xmlel{children = [{xmlcdata, CData}]}|_] -> CData
                 end,
-                NewMsgCount = 
-                case proplists:get_value('message-count', OldPayload, 0) of
-                    ?MAX_INT -> 0;
-                    C when is_integer(C) -> C + 1
+                IsOtrMessage =
+                fun(Msg) ->
+                    case binary:match(Msg, <<"?OTR">>) of
+                        {0,4} -> true;
+                        _ -> false
+                    end
                 end,
-                {push_and_store,
-                 [{'last-message-body', NewBody},
-                  {'last-message-sender', FromS},
-                  {'message-count', NewMsgCount}]};
+                case IsOtrMessage(NewBody) of
+                    true ->
+                        ?DEBUG("+++++++++++ matched OTR message", []),
+                        store_only;
+                    false ->
+                        ?DEBUG("+++++++++++ normal message", []),
+                        NewMsgCount =
+                        case proplists:get_value('message-count', OldPayload, 0) of
+                            ?MAX_INT -> 0;
+                            C when is_integer(C) -> C + 1
+                        end,
+                        {push_and_store,
+                         [{'last-message-body', NewBody},
+                          {'last-message-sender', FromS},
+                          {'message-count', NewMsgCount}]}
+                end;
 
             #xmlel{name = <<"presence">>, attrs = Attrs} ->
                 case proplists:get_value(<<"type">>, Attrs) of
@@ -2108,21 +2125,22 @@ make_payload(UnackedStanzas, StoredPayload, Config) ->
             _ -> {push, []}
         end
     end,
-    {NewPayload, StanzasToStore} =
+    {NewPayload, StanzasToStore, ShouldPush} =
     lists:foldl(
-        fun({Timestamp, Stanza}, {PayloadAcc, StanzasAcc}) ->
+        fun({Timestamp, Stanza}, {PayloadAcc, StanzasAcc, ShouldPushAcc}) ->
             case MakeNewValues(Stanza, PayloadAcc) of
+                store_only ->
+                    {PayloadAcc, [{Timestamp, Stanza}|StanzasAcc], ShouldPushAcc};
                 {push, NewValues} -> 
-                    {UpdatePayload(NewValues, PayloadAcc), StanzasAcc};
-
+                    {UpdatePayload(NewValues, PayloadAcc), StanzasAcc, true};
                 {push_and_store, NewValues} ->
                     {UpdatePayload(NewValues, PayloadAcc),
-                     [{Timestamp, Stanza}|StanzasAcc]}
+                     [{Timestamp, Stanza}|StanzasAcc], true}
             end
         end,                                              
-        {StoredPayload, []},
+        {StoredPayload, [], false},
         UnackedStanzas),
-    {filter_payload(NewPayload, Config), StanzasToStore}.
+    {filter_payload(NewPayload, Config), StanzasToStore, ShouldPush}.
 
 %-------------------------------------------------------------------------
 
