@@ -73,7 +73,7 @@
 -define(SILENT_PUSH_DEFAULT, true).
 
 -define(MAX_INT, 4294967295).
--define(ADJUSTED_RESUME_TIMEOUT, 100*24*60*60).
+-define(ADJUSTED_RESUME_TIMEOUT, 49*24*60*60*1000).
 
 %-------------------------------------------------------------------------
 % xdata-form macros
